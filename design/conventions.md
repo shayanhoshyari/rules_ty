@@ -13,6 +13,7 @@
 | `ty/` | Bazel rules source code | Derived from `design/` |
 | `examples/` | Example usage of the rules | Updated alongside `ty/` |
 | `docs/` | User-facing documentation (Sphinx / readthedocs) | Updated alongside `design/` |
+| `.worktrees/` | Cloned external repos for reference (e.g. foundry, rules_mypy). Gitignored. | Agent-managed, not committed |
 
 ## 3. Plan Lifecycle
 
