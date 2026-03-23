@@ -35,3 +35,4 @@ Follow the PR checklist in [design/conventions.md](design/conventions.md) (secti
 ## 5. Key References
 
 - **Conventions and standards:** [design/conventions.md](design/conventions.md)
+- **External knowledge (Bazel, ty, rules_mypy):** [design/reference.md](design/reference.md)
