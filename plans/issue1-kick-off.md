@@ -175,13 +175,14 @@ All four issues from the GitHub issue are addressable:
 4. Remove `python_version` param → infer from Python toolchain
 
 **Key decision:** require `rules_python` `venvs_site_packages=yes`. This mode gives each
-`py_binary` a standard `.venv/site-packages/` layout, which ty natively discovers. This
-simplifies module resolution (no manual `--extra-search-path` per dep) and is future-looking
-(this is the direction rules_python is heading). See `design/architecture.md` §1.2.
+`py_binary` a standard `.venv/site-packages/` layout for third-party (pip) deps, which ty
+natively discovers. First-party `py_library` sources are not affected — they remain in the
+runfiles tree and need `--extra-search-path`. This is a two-path strategy: venv for
+third-party, extra-search-path for first-party. See `design/architecture.md` §1.2 and §3.
 
-**One concrete risk:** module resolution in the Bazel sandbox. Need to verify that ty can
-use the venv layout provided by `venvs_site_packages` for first-party, third-party, and
-stub packages. This will be validated via a PoC.
+**One concrete risk:** module resolution in the Bazel sandbox. Need to verify that both
+paths work: ty discovering pip deps via the venv layout, and first-party deps via
+`--extra-search-path`. This will be validated via a PoC.
 
 **Next step:** [Issue #2](https://github.com/shayanhoshyari/rules_ty/issues/2) — proof-of-concept
 to validate ty's module resolution in a Bazel sandbox with venvs_site_packages.

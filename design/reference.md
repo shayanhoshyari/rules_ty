@@ -122,7 +122,9 @@ In a Bazel sandbox, (1-3) don't exist. We rely on rules_python's `venvs_site_pac
 
 rules_ty requires `--@rules_python//python/config_settings:venvs_site_packages=yes`.
 
-When enabled, rules_python creates a per-binary `.venv/lib/pythonX.Y/site-packages/` with symlinks to packages in runfiles. This gives ty a standard venv layout for module discovery.
+When enabled, rules_python creates a per-binary `.venv/lib/pythonX.Y/site-packages/` with symlinks to packages in runfiles. This gives ty a standard venv layout for third-party module discovery.
+
+**Scope limitation:** this feature only affects third-party packages from pip. First-party `py_library` sources are not placed in site-packages — they remain in the runfiles tree and must be discovered via `--extra-search-path` or `PyInfo.imports`.
 
 **Enabling:**
 - Flag: `--@rules_python//python/config_settings:venvs_site_packages=yes`
