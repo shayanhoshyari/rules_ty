@@ -113,8 +113,43 @@ ty discovers installed packages via:
 1. Active virtual environment (`VIRTUAL_ENV`)
 2. `.venv` in project root
 3. `python3` or `python` on PATH
+4. `--extra-search-path` for additional module resolution paths
+5. `--python` pointing to a Python interpreter or venv
 
-In a Bazel sandbox, none of these exist. Use `--extra-search-path` to point at the runfiles tree, similar to how rules_mypy sets `MYPYPATH`.
+In a Bazel sandbox, (1-3) don't exist. We rely on rules_python's `venvs_site_packages` mode to provide a proper venv layout (see section 3.3).
+
+### 3.3 rules_python venvs_site_packages
+
+rules_ty requires `--@rules_python//python/config_settings:venvs_site_packages=yes`.
+
+When enabled, rules_python creates a per-binary `.venv/lib/pythonX.Y/site-packages/` with symlinks to packages in runfiles. This gives ty a standard venv layout for module discovery.
+
+**Enabling:**
+- Flag: `--@rules_python//python/config_settings:venvs_site_packages=yes`
+- Default is `no`. Only affects PyPI dependencies of `--bootstrap_impl=script` binaries.
+- Requires `--@rules_python//python/config_settings:bootstrap_impl=script` (which requires rules_python toolchain, i.e. Bazel 7+ with bzlmod).
+
+**Provider API (`PyInfo.venv_symlinks`):**
+
+Added in rules_python 1.5.0. A depset of `VenvSymlinkEntry`, each with:
+- `kind`: one of `VenvSymlinkKind.LIB` (site-packages), `VenvSymlinkKind.BIN`, or `VenvSymlinkKind.INCLUDE`
+- `venv_path`: path relative to the kind directory in the venv
+- `link_to_path`: runfiles-root relative path that `venv_path` symlinks to (if `link_to_file` is None)
+- `link_to_file`: a File that `venv_path` should point to (added in 1.7.0)
+- `files`: depset of Files under `link_to_path`
+- `package`: normalized PyPI package name (added for overlap resolution)
+- `version`: PEP 440 normalized version
+
+Per-binary: each `py_binary` gets its own venv. `py_library` targets don't create a venv but carry the provider for downstream binaries.
+
+**Status:** still marked experimental as of rules_python 1.x (API may change). The provider evolved from `site_packages_symlinks` (tuples) to `venv_symlinks` (VenvSymlinkEntry). Known open issues exist (flask compat [#3056], overlapping action outputs [#3204]).
+
+**References:**
+- Config setting docs: https://rules-python.readthedocs.io/en/stable/api/rules_python/python/config_settings/index.html
+- PyInfo / VenvSymlinkEntry API: https://rules-python.readthedocs.io/en/latest/api/rules_python/python/private/py_info.html
+- Tracking issue: https://github.com/bazelbuild/rules_python/issues/2156
+- Initial PR: https://github.com/bazelbuild/rules_python/pull/2617
+- Known issues: https://github.com/bazel-contrib/rules_python/issues/3056, https://github.com/bazel-contrib/rules_python/issues/3204
 
 ## 4. Updating Dependencies
 

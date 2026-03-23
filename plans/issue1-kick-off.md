@@ -162,6 +162,26 @@ Landed in:
 
 ----
 
-## Other things to discuss one by one
+## ✅ Feasibility analysis
 
-- Is it possible to achieve this in first place.
+ty maps cleanly to the Bazel aspect pattern: `ty check [PATH...]` with `--extra-search-path`
+replaces mypy + MYPYPATH, `--python-version` can be inferred from the toolchain, typeshed is
+bundled, and ty's speed eliminates the need for cache propagation.
+
+All four issues from the GitHub issue are addressable:
+1. Remove `types` mapping → rely on gazelle's `python_generate_pyi_deps`
+2. Fix torch performance → ty is 10-100x faster
+3. Bazel 9 compat → starting fresh, Bazel 9+ only
+4. Remove `python_version` param → infer from Python toolchain
+
+**Key decision:** require `rules_python` `venvs_site_packages=yes`. This mode gives each
+`py_binary` a standard `.venv/site-packages/` layout, which ty natively discovers. This
+simplifies module resolution (no manual `--extra-search-path` per dep) and is future-looking
+(this is the direction rules_python is heading). See `design/architecture.md` §1.2.
+
+**One concrete risk:** module resolution in the Bazel sandbox. Need to verify that ty can
+use the venv layout provided by `venvs_site_packages` for first-party, third-party, and
+stub packages. This will be validated via a PoC.
+
+**Next step:** [Issue #2](https://github.com/shayanhoshyari/rules_ty/issues/2) — proof-of-concept
+to validate ty's module resolution in a Bazel sandbox with venvs_site_packages.
