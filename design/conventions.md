@@ -4,6 +4,8 @@
 
 `AGENTS.md` is the compact entry point that summarizes the project and points to `design/` files. Documents in `design/` must be **standalone** -- they should not reference back to `AGENTS.md` for their content. If both files need the same information, the full version lives in `design/` and `AGENTS.md` contains a short summary with a pointer.
 
+`design/architecture.md` covers both UX decisions and internal architecture in a single file. The boundary between "how users use it" and "how it works" is blurry for a Bazel ruleset. Split if the file grows unwieldy.
+
 ## 2. Folder Roles
 
 | Folder | Role | Mutability |
@@ -73,8 +75,10 @@ This is an **AI-native development** project. `design/` is the source of truth. 
 
 ### Testing
 
-- Integration tests using Bazel's test infrastructure.
-- Example projects in `examples/` double as smoke tests.
+- All sanity checks must be `bazel test` targets. The agent should be able to run `bazel test //...` and get a pass/fail on everything — no manual steps.
+- Integration tests via `rules_bazel_integration_test` on example workspaces.
+- Formatting checks (buildifier) as test targets.
+- `--deleted_packages` sync check as a test target.
 
 ## 6. Dependency Updates
 

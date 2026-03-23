@@ -21,11 +21,15 @@ rules_ty/
   plans/                 ← Proposals and ideations (frozen after implementation)
   design/
     conventions.md       ← Development conventions, coding standards, plan lifecycle
-    architecture.md      ← How the aspect works, module layout, key decisions (TBD)
-    reference.md         ← External knowledge: ty CLI, Bazel aspects, rules_mypy lessons (TBD)
+    architecture.md      ← UX decisions and internal architecture
+    reference.md         ← External knowledge: Bazel, ty, rules_multitool, integration testing
+  MODULE.bazel           ← Bazel module definition
+  REPO.bazel             ← ignore_directories() for non-Bazel dirs
+  .bazelrc               ← Default flags + --deleted_packages for examples
   ty/                    ← Bazel rules source code
-  examples/              ← Example usage of the rules
+  examples/              ← Integration test workspaces (each with own MODULE.bazel)
   docs/                  ← User-facing documentation (Sphinx / readthedocs)
+  .worktrees/            ← Cloned reference repos and worktrees (gitignored)
 ```
 
 ## 4. Before Creating a PR
@@ -35,4 +39,5 @@ Follow the PR checklist in [design/conventions.md](design/conventions.md) (secti
 ## 5. Key References
 
 - **Conventions and standards:** [design/conventions.md](design/conventions.md)
+- **Architecture and UX decisions:** [design/architecture.md](design/architecture.md)
 - **External knowledge (Bazel, ty, rules_mypy):** [design/reference.md](design/reference.md)

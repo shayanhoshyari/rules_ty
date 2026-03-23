@@ -86,29 +86,37 @@ Proposed layout based on rules_mypy, simplified for ty:
 
 ```
 rules_ty/
-  MODULE.bazel              # Bazel module definition
-  BUILD.bazel
+  MODULE.bazel              # Bazel module definition + bazel_binaries extension for integration tests
+  BUILD.bazel               # filegroup "local_repository_files" for integration tests
   .bazelversion             # Pin Bazel 9.x
-  .bazelrc                  # Default flags
-  REPO.bazel                # ignore_directories() for non-Bazel dirs (plans/, design/, docs/, .worktrees/, etc.)
+  .bazelrc                  # Default flags + --deleted_packages for example child workspaces
+  REPO.bazel                # ignore_directories() for non-Bazel dirs (plans/, design/, docs/, .worktrees/)
 
   AGENTS.md / CLAUDE.md / plans/ / design/ / .worktrees/   # (established)
 
   ty/
     ty.bzl                  # Public API: ty() aspect factory
-    BUILD.bazel
+    BUILD.bazel             # includes filegroup "all_files" for integration tests
     private/
       ty.bzl                # Aspect implementation
+      ty.lock.json          # multitool lockfile for ty binary
       BUILD.bazel
 
   examples/
-    basic/
-      MODULE.bazel
-      BUILD.bazel
-      ...
+    BUILD.bazel             # bazel_integration_tests() targets + test_suite
+    simple/
+      MODULE.bazel          # local_path_override(module_name = "rules_ty", path = "../..")
+      BUILD.bazel           # Minimal: one py_library, shows basic usage
+    comprehensive/
+      MODULE.bazel          # local_path_override(module_name = "rules_ty", path = "../..")
+      BUILD.bazel           # Full coverage: cross-deps, third-party, generated files, etc.
+      ...                   # Adapted from rules_mypy demo (stripped: types ext, cache, opt-in)
 
   docs/                     # Sphinx / readthedocs
   .bcr/                     # Bazel Central Registry metadata
+  .github/
+    workflows/
+      ci.yml                # Runs bazel test //examples:all_integration_tests
 ```
 
 Key simplifications vs rules_mypy:
@@ -117,12 +125,40 @@ Key simplifications vs rules_mypy:
 - No WORKSPACE (Bazel 9+ only, bzlmod only)
 - No cache propagation (ty is fast enough to not need it)
 
-### Open questions
+### Decisions
 
-- [x] **ty resolution:** Resolved — use `rules_multitool` (see "How to resolve and run ty" section above).
-- [ ] **`tools/` directory:** Do we need one for buildifier config, CI scripts, etc.?
-- [ ] **`examples/` scope:** Single basic example or multiple (basic, opt-in, custom-config)?
-- [ ] **CI from the start:** Set up `.github/workflows/` now or defer?
+- [x] **ty resolution:** Use `rules_multitool` (see "How to resolve and run ty" section above).
+- [x] **Integration testing:** Use `rules_bazel_integration_test` to test examples against multiple
+      Bazel versions. Each example is an independent Bazel module with `local_path_override` pointing
+      to the parent. Tests are `bazel test` targets, runnable locally — not just in CI.
+- [x] **`examples/` scope:** Two examples: `examples/simple/` (minimal, human-friendly) and
+      `examples/comprehensive/` (full coverage, adapted from rules_mypy demo). No opt-in example —
+      we're always-on by default (see design/architecture.md section 1.1).
+- [x] **CI from the start:** Yes, minimal. Single workflow running
+      `bazel test //examples:all_integration_tests`.
+- [x] **All checks as `bazel test`:** buildifier format, `--deleted_packages` sync, integration
+      tests — all runnable via `bazel test //...`. No manual sanity checks.
+- [x] **`tools/` directory:** Not needed. `buildifier` comes from `buildifier_prebuilt` as a
+      `bazel_dep`. CI lives in `.github/workflows/`.
+
+### ignore_directories() vs --deleted_packages
+
+Two mechanisms for hiding directories from Bazel, used for different purposes:
+
+| Directory | Mechanism | Why |
+|-----------|-----------|-----|
+| `plans/`, `design/`, `docs/`, `.worktrees/` | `ignore_directories()` in REPO.bazel | Completely invisible to Bazel |
+| `examples/simple/`, `examples/comprehensive/`, etc. | `--deleted_packages` in .bazelrc | Removes child packages from parent, but files remain visible to `glob()` so integration tests can collect them |
+
+`ignore_directories()` makes files completely invisible — `glob()` can't see them.
+`--deleted_packages` removes packages but files are still glob-able — required by
+`rules_bazel_integration_test` which uses `glob_workspace_files()` from the parent.
+
+The integration test repo provides a tool to auto-populate deleted_packages:
+`bazel run @rules_bazel_integration_test//tools:update_deleted_packages`
+
+Landed in:
+- `design/reference.md` (sections on ignore_directories, rules_bazel_integration_test)
 
 ----
 
