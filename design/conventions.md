@@ -10,6 +10,7 @@
 
 | Folder | Role | Mutability |
 |--------|------|------------|
+| `README.md` | Public landing page: project summary, status, usage (once available) | Updated as milestones land |
 | `plans/` | Proposals, ideations, brainstorming | Frozen after implementation |
 | `design/` | Living specs — architecture, conventions, reference | Updated as the project evolves |
 | `ty/` | Bazel rules source code | Derived from `design/` |

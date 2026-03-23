@@ -17,6 +17,7 @@ Full details in [design/conventions.md](design/conventions.md) (section 4).
 
 ```
 rules_ty/
+  README.md              ← Public landing page (status, links, usage once available)
   AGENTS.md              ← You are here. Workflow and pointers.
   plans/                 ← Proposals and ideations (frozen after implementation)
   design/
