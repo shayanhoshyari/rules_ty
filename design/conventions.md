@@ -1,0 +1,103 @@
+# Development Conventions
+
+## 1. Document Structure
+
+`AGENTS.md` is the compact entry point that summarizes the project and points to `design/` files. Documents in `design/` must be **standalone** -- they should not reference back to `AGENTS.md` for their content. If both files need the same information, the full version lives in `design/` and `AGENTS.md` contains a short summary with a pointer.
+
+## 2. Folder Roles
+
+| Folder | Role | Mutability |
+|--------|------|------------|
+| `plans/` | Proposals, ideations, brainstorming | Frozen after implementation |
+| `design/` | Living specs — architecture, conventions, reference | Updated as the project evolves |
+| `ty/` | Bazel rules source code | Derived from `design/` |
+| `examples/` | Example usage of the rules | Updated alongside `ty/` |
+| `docs/` | User-facing documentation (Sphinx / readthedocs) | Updated alongside `design/` |
+
+## 3. Plan Lifecycle
+
+Plans are the equivalent of RFCs or ADRs (Architecture Decision Records).
+
+### Creating a plan
+
+- One plan per effort, named `plans/issueN-short-description.md`.
+- A plan starts as a brainstorm: context, options, open questions.
+- The human and agent collaborate on the plan until decisions are made.
+
+### Implementing a plan
+
+1. Update `design/` files with the outcomes from the plan.
+2. Update source code to match `design/`.
+3. Mark completed items in the plan with checkmarks.
+
+### Freezing a plan
+
+Once fully implemented, add a status header at the top of the plan:
+
+```
+Status: Implemented
+Landed in: design/architecture.md (section X), design/conventions.md (section Y)
+```
+
+A frozen plan is never edited again. If something changes later, that's a new plan that references the old one.
+
+### Why keep frozen plans?
+
+`design/` says *what* the current state is. Plans say *why* we chose it over alternatives. They're the decision log.
+
+## 4. The Sync Contract
+
+This is an **AI-native development** project. `design/` is the source of truth. Source code is derived from it.
+
+**Order of operations for every change:**
+
+1. Identify which `design/` file(s) are affected.
+2. Update `design/` first with the new behavior/spec.
+3. Then update source code to implement what `design/` now says.
+4. If a change is purely internal (refactor, bug fix, no behavior change), code-only changes are OK — but explain why no design change was needed.
+
+## 5. Coding Standards
+
+### Starlark / Bazel
+
+- Target Bazel 9+ only. No WORKSPACE support — bzlmod only.
+- Use `aspect()` for the type-checking integration, following the pattern from rules_mypy.
+- Private implementation files go in `ty/private/`. Public API in `ty/ty.bzl`.
+- Use `buildifier` for formatting.
+
+### Python (tooling, runners)
+
+- Use type hints.
+- Format with `ruff`.
+
+### Testing
+
+- Integration tests using Bazel's test infrastructure.
+- Example projects in `examples/` double as smoke tests.
+
+## 6. Commit Conventions
+
+- Commit messages should be concise and focus on *why*, not *what*.
+- If a commit touches both `design/` and source code, lead with the design change in the message.
+
+## 7. PR Checklist
+
+Before creating a PR, verify all of the following:
+
+### Design ↔ Code sync
+- [ ] If source code changed, are the corresponding `design/` files up to date?
+- [ ] If `design/` files changed, does the source code match?
+
+### Conventions
+- [ ] New conventions are in `design/conventions.md`, not scattered in code comments, commit messages, or other docs.
+
+### Plans
+- [ ] Implemented plans have a frozen status header (`Status: Implemented`, `Landed in: ...`).
+- [ ] No edits to already-frozen plans. If something changes, create a new plan that references the old one.
+
+### Cross-references
+- [ ] All file references in `AGENTS.md` and `design/` files point to files that exist.
+
+### Tests
+- [ ] Existing tests still pass.
+- [ ] New functionality has test coverage (integration tests or examples).
