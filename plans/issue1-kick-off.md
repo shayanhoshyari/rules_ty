@@ -80,7 +80,7 @@ Landed in:
 
 ----
 
-## Project structure
+## ✅ Project structure
 
 Proposed layout based on rules_mypy, simplified for ty:
 
