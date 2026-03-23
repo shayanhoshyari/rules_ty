@@ -27,20 +27,62 @@ The exact mechanism (how the aspect wires up both paths) will be determined duri
 
 ## 2. Key Design Decisions
 
-### 2.1 No cache propagation (assumption — needs PoC validation)
+### 2.1 Scaling strategy: accept quadratic, rely on remote cache
 
-ty is reported as 10-100x faster than mypy. The working assumption is that this eliminates the need for the `MypyCacheInfo` provider and inter-target cache merging that rules_mypy uses.
+Without inter-target caching, running ty across a Bazel build graph is quadratic: each of N targets
+re-analyzes its O(M) transitive deps, giving O(N*M) total work. Even at 100x mypy's speed, this
+blows up for large monorepos on a clean build.
 
-However, in Bazel each target runs ty independently. If many targets depend on a large package (e.g., torch), ty would analyze that package once per target. Even at 10x mypy's speed, this could add up.
+**Why we can't copy rules_mypy's caching approach:**
 
-**Success criterion:** any single `py_library` target must complete `ty check` in under 1 second, regardless of its position in the dependency graph. If it doesn't, we need to revisit caching.
+rules_mypy propagates a file-based `.mypy_cache/` directory between Bazel actions via the
+`MypyCacheInfo` provider. ty has no equivalent — it uses [salsa](https://github.com/salsa-rs/salsa)
+for in-memory incremental computation with no `--cache-dir` or persistent file cache to pass
+between actions. ty has a TODO for persistent caching but it's not implemented
+(`crates/ty_project/src/db.rs`, line 104). Even if implemented, Bazel would need ty to support
+merging pre-computed type info across actions, which is a fundamentally different problem.
 
-The PoC ([Issue #2](https://github.com/shayanhoshyari/rules_ty/issues/2)) must measure these scenarios:
+**Decision: accept quadratic for now, mitigated by Bazel's remote cache.**
+
+The quadratic cost is a cold-start problem, not a per-CI-run problem. Bazel's remote cache
+ensures that if a target's transitive inputs haven't changed, the ty action is a cache hit —
+ty doesn't run at all. In steady-state CI:
+- A typical PR touching a few files: most targets are cache hits. Only targets whose transitive
+  inputs changed re-run.
+- Worst case (changing a widely-used utility library): all downstream targets re-check. But this
+  is bounded by what actually changed and reflects real work that needs re-validation.
+
+This is the same approach [rules_lint](https://blog.aspect.build/rules-lint-2) uses in
+production. They acknowledge the quadratic concern and are working with Astral on incremental
+support as a future improvement.
+
+**Future improvements (not blocking v1):**
+1. **ty persistent caching.** ty has a TODO for salsa database persistence
+   (`crates/ty_project/src/db.rs`, line 104). When this lands, investigate whether the
+   serialized database can be passed between Bazel actions to avoid redundant analysis of
+   transitive deps. Track upstream: https://github.com/astral-sh/ruff
+2. **Incremental Bazel support.** Aspect Build is collaborating with Astral on this
+   (per [blog.aspect.build/rules-lint-2](https://blog.aspect.build/rules-lint-2)). Unknown
+   timeline and form. May overlap with (1).
+3. **Generate `.pyi` stubs as action outputs.** Each target outputs stubs; downstream targets
+   receive stubs instead of full sources. Gives O(N) total work but ty doesn't have a
+   "generate stubs" mode today.
+
+**PoC success criteria:**
+
+The PoC must measure both per-target time AND total build scaling:
+
+*Per-target (< 1 second):*
 1. **Massive third-party dep** — `py_library` with 1 source file importing torch.
 2. **Multiple heavy third-party deps** — `py_library` importing pandas + numpy.
 3. **Deep first-party chain** — `py_library` at the bottom of ~20+ transitive `py_library` deps, each with a few files.
 4. **Wide third-party imports** — `py_library` importing 10-15 different third-party packages.
-5. **Leaf library (baseline)** — small `py_library` near the top of the chain with few deps. Should be fast; if not, something is fundamentally wrong.
+5. **Leaf library (baseline)** — small `py_library` near the top of the chain with few deps.
+
+*Total build scaling:*
+6. **Full graph build** — `bazel build ...` on the entire example project. Measure total wall time
+   and CPU time. Compare O(N*M) observed growth against target count to quantify how fast it
+   degrades.
 
 ### 2.2 No types mapping
 

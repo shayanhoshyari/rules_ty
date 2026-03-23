@@ -107,7 +107,23 @@ ty check [PATH...]              # Check specific files
 
 Reference: https://docs.astral.sh/ty/reference/cli/
 
-### 3.2 Module resolution
+### 3.2 Internals: salsa and caching
+
+ty uses the [salsa](https://github.com/salsa-rs/salsa) framework for in-memory incremental
+computation. Queries like `infer_scope_types`, `infer_definition_types` are `#[salsa::tracked]`
+— salsa memoizes results and only re-executes queries whose inputs changed.
+
+**No persistent cache today.** Each `ty check` invocation starts fresh. The code has a TODO for
+persistence (`crates/ty_project/src/db.rs`, line 104) but it's not implemented. salsa has a
+`persistence` feature (serde derives) but it's not wired up in ty.
+
+**Bazel symlink support.** ty's file walker follows symlinks since
+[astral-sh/ty#922](https://github.com/astral-sh/ty/issues/922) (Aug 2025), which is required
+for Bazel's symlink forest execution sandbox.
+
+Source: `.worktrees/ty-ruff/` (sparse clone of `astral-sh/ruff`).
+
+### 3.3 Module resolution
 
 ty discovers installed packages via:
 1. Active virtual environment (`VIRTUAL_ENV`)
