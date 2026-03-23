@@ -30,7 +30,7 @@ rules_ty/
 
 ## 4. Before Creating a PR
 
-Follow the PR checklist in [design/conventions.md](design/conventions.md) (section 7).
+Follow the PR checklist in [design/conventions.md](design/conventions.md) (section 8).
 
 ## 5. Key References
 

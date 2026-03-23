@@ -76,12 +76,18 @@ This is an **AI-native development** project. `design/` is the source of truth. 
 - Integration tests using Bazel's test infrastructure.
 - Example projects in `examples/` double as smoke tests.
 
-## 6. Commit Conventions
+## 6. Dependency Updates
+
+Keep dependencies current. For now there is no fixed cadence — the human decides when to update. As the project matures, this may be automated with renovate or dependabot.
+
+See [design/reference.md](reference.md) (section 4) for the actual update procedures.
+
+## 7. Commit Conventions
 
 - Commit messages should be concise and focus on *why*, not *what*.
 - If a commit touches both `design/` and source code, lead with the design change in the message.
 
-## 7. PR Checklist
+## 8. PR Checklist
 
 Before creating a PR, verify all of the following:
 

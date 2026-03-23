@@ -102,9 +102,37 @@ ty discovers installed packages via:
 
 In a Bazel sandbox, none of these exist. Use `--extra-search-path` to point at the runfiles tree, similar to how rules_mypy sets `MYPYPATH`.
 
-## 4. rules_mypy (prior art)
+## 4. Updating Dependencies
 
-### 4.1 Architecture
+### 4.1 ty binary (multitool lockfile)
+
+Update `ty/private/ty.lock.json` to the latest ty release:
+
+```bash
+# Install multitool CLI if not available
+cargo install multitool
+
+# Update the lockfile (fetches latest release, updates URLs and SHAs)
+multitool --lockfile ty/private/ty.lock.json update
+```
+
+Reference: https://github.com/theoremlp/multitool
+
+### 4.2 Bazel module deps (MODULE.bazel)
+
+`bazel_dep()` versions for rules_python, rules_multitool, bazel_skylib, etc. are pinned in `MODULE.bazel`. To update:
+
+1. Check for new versions on the [Bazel Central Registry](https://registry.bazel.build/).
+2. Update the version string in the `bazel_dep()` call.
+3. Run `bazel build //...` to verify compatibility.
+
+### 4.3 Automation (future)
+
+Once the project matures, set up renovate or dependabot to automate the above. Renovate supports both Bazel MODULE.bazel and custom lockfile patterns.
+
+## 5. rules_mypy (prior art)
+
+### 5.1 Architecture
 
 rules_mypy uses a Bazel aspect that:
 1. Attaches to `py_binary`, `py_library`, `py_test` targets
@@ -113,14 +141,14 @@ rules_mypy uses a Bazel aspect that:
 4. Runs mypy via a `py_binary` wrapper with `MYPYPATH` set to include all dependency paths
 5. Produces a cache directory as output for downstream targets
 
-### 4.2 Key patterns to reuse
+### 5.2 Key patterns to reuse
 
 - Aspect propagates along `deps` via `attr_aspects = ["deps"]`
 - Opt-in/opt-out via tags (`suppression_tags`, `opt_in_tags`)
 - External dep paths extracted from `PyInfo.imports`
 - Config file passed as a label attribute
 
-### 4.3 Key patterns to drop
+### 5.3 Key patterns to drop
 
 - Cache propagation (`MypyCacheInfo`) -- ty is fast enough
 - `py_binary` wrapper for the checker -- ty is a standalone binary

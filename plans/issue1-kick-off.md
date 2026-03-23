@@ -69,7 +69,14 @@ Landed in:
 - `design/reference.md` (section on rules_multitool)
 
 ----
-## How to update dependency versions
+## ✅ How to update dependency versions
+
+Captured the convention (keep deps current, no fixed cadence yet) and procedures (multitool CLI
+for ty binary, manual version bumps for MODULE.bazel, future renovate/dependabot automation).
+
+Landed in:
+- `design/conventions.md` (section 6 — dependency updates policy)
+- `design/reference.md` (section 4 — update procedures)
 
 ----
 
