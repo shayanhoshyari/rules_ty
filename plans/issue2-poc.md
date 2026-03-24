@@ -176,33 +176,42 @@ must use `PyInfo` providers, not runfiles. See Phase 3.
 
 **Limitation:** same as Phase 1 — host-side only, used runfiles, not action sandbox.
 
-### Phase 3: Bazel action validation (minimal aspect)
+### ✅ Phase 3: Bazel action validation (minimal aspect)
 
-The real validation. Write a minimal `.bzl` aspect that runs ty inside a Bazel action,
-using the mechanisms available to aspects (not runfiles):
+**Result: PASS.** ty runs correctly as a Bazel action via an aspect, using `PyInfo`
+providers for module resolution inside the sandbox.
 
-**How it works:**
-- Aspect visits `py_library`, `py_binary`, `py_test` targets.
-- Collects `PyInfo.transitive_sources` + `PyInfo.transitive_pyi_files` from deps →
-  passed as **action inputs** (files available in the sandbox).
-- Collects `PyInfo.imports` from deps → used to construct `--extra-search-path` entries.
-  These are path prefixes relative to the exec root (e.g.,
-  `../rules_python++pip+pip_312_numpy/site-packages` for pip packages).
-- Runs `ty check` on the target's own `srcs` only — transitive deps are in the sandbox
-  for import resolution, not for checking.
-- ty binary fetched via `rules_multitool` with `cfg = "exec"`.
+**Implementation:** `examples/poc/ty_aspect/defs.bzl` — minimal aspect that:
+- Visits `py_library`, `py_binary`, `py_test` targets.
+- Collects `PyInfo.transitive_sources` from deps → passed as action inputs.
+- Collects `PyInfo.imports` from deps → prefixed with `external/` to form
+  `--extra-search-path` entries. In bzlmod, `File.path` for external repos uses
+  `external/<repo>/...`, so `PyInfo.imports` values must be prefixed with `external/`.
+- Runs `ty check` on the target's own `srcs` via `ctx.actions.run_shell`.
+- ty binary downloaded via `http_archive` with `cfg = "exec"`.
 
-**What this validates:**
-1. The file layout in the action sandbox is correct for ty's module resolution.
-2. `PyInfo.imports` path prefixes produce valid `--extra-search-path` entries.
-3. ty works on `py_library` targets (which have no runfiles).
-4. `bazel build //... --aspects=...` runs ty across the full graph.
-5. Bazel action caching works — second `bazel build` with no changes is all cache hits.
+**Key findings during implementation:**
+1. `PyInfo.imports` gives paths like `rules_python++pip+pip_312_numpy/site-packages`.
+   These must be prefixed with `external/` (not `../`) because `File.path` in bzlmod
+   uses `external/<repo>/...` layout in the sandbox.
+2. `PyInfo.transitive_sources` includes pip package files — 445 files for app:main
+   with numpy + requests.
+3. First-party `py_library` sources are at their workspace-relative paths (e.g.,
+   `lib_base/base.py`) — ty finds them automatically as "first-party code".
 
-**Pass/fail:**
-- ty exits 0 on all targets via `bazel build --aspects` → module resolution works
-  inside the sandbox.
-- Type errors are correctly detected and fail the build.
-- Second build with no changes: 0 actions executed (all cache hits).
+**Results:**
+- `bazel build //... --aspects=//ty_aspect:defs.bzl%ty_aspect --output_groups=ty_check`
+  → 33 targets, all pass (32 sandboxed actions, 0.79s critical path).
+- Second build with no changes: 0 actions executed (all cache hits) ✅
+- Type errors across transitive first-party deps are correctly detected ✅
+
+**Validated the five criteria:**
+1. ✅ File layout in action sandbox is correct for ty's module resolution.
+2. ✅ `PyInfo.imports` with `external/` prefix produces valid search paths.
+3. ✅ ty works on `py_library` targets (no runfiles needed).
+4. ✅ `bazel build //...` runs ty across the full graph.
+5. ✅ Bazel action caching works — second build is all cache hits.
+
+Design updated: `design/architecture.md` §1.3, §3.
 
 ---

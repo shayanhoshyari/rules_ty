@@ -15,3 +15,14 @@ pip.parse(
     requirements_lock = "//:requirements.txt",
 )
 use_repo(pip, "pip")
+
+# ty binary for the PoC aspect (hardcoded to macOS ARM64 for now).
+# Production rules_ty will use rules_multitool for cross-platform support.
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(
+    name = "ty_bin",
+    urls = ["https://releases.astral.sh/github/ty/releases/download/0.0.24/ty-aarch64-apple-darwin.tar.gz"],
+    sha256 = "91709778a139350dc890e6048b042bc0800b04f1cb0cd4a636af22673fa84c1a",
+    strip_prefix = "ty-aarch64-apple-darwin",
+    build_file_content = 'exports_files(["ty"])',
+)

@@ -26,26 +26,27 @@ disproved this — the venv symlinks are broken outside the Bazel execution sand
 `py_library` targets don't have runfiles at all. The working approach uses `PyInfo`
 providers, which makes `venvs_site_packages` irrelevant to type checking.
 
-### 1.3 Module resolution strategy
+### 1.3 Module resolution strategy (validated)
 
 The aspect uses **`PyInfo` providers** and **`--extra-search-path`** for both first-party
 and third-party deps:
 
-- **Action inputs:** `PyInfo.transitive_sources` + `PyInfo.transitive_pyi_files` from deps
-  are passed as action inputs. This makes all source and stub files available in the
-  sandbox for ty to resolve imports.
-- **Search paths:** `PyInfo.imports` from deps provides path prefixes relative to the
-  exec root (e.g., `../rules_python++pip+pip_312_numpy/site-packages` for pip packages).
-  These are passed as `--extra-search-path` entries to ty.
+- **Action inputs:** `PyInfo.transitive_sources` from deps are passed as action inputs.
+  This makes all source files available in the sandbox for ty to resolve imports.
+- **Search paths:** `PyInfo.imports` from deps provides path prefixes (e.g.,
+  `rules_python++pip+pip_312_numpy/site-packages`). These are prefixed with `external/`
+  and passed as `--extra-search-path` entries to ty. In bzlmod, `File.path` uses
+  `external/<repo>/...` layout.
+- **First-party discovery:** ty automatically discovers first-party code from the
+  working directory (`_main/` in the sandbox) — no explicit search path needed.
 - **Scope:** the aspect only checks the target's own `srcs`. Transitive deps are in the
   sandbox for import resolution, not for type checking.
 
 This is the same approach `rules_lint` uses — it collects `PyInfo.imports` from deps and
 constructs `--extra-search-path` entries, with transitive sources as action inputs.
 
-**Status:** host-side validation confirmed `--extra-search-path` works for ty
-(`examples/poc/validate.sh`). Sandbox validation via a minimal Bazel aspect is in progress
-(Phase 3 of the PoC).
+**Validated** in `examples/poc/ty_aspect/defs.bzl` — 33 targets pass, action caching
+works, type errors are correctly detected across transitive deps.
 
 ## 2. Key Design Decisions
 
@@ -111,16 +112,17 @@ rules_mypy requires a `types` dict mapping deps to their stub packages. We drop 
 
 rules_mypy requires `python_version` as a parameter on `mypy_cli`. We infer it from the Python toolchain (`ctx.toolchains`) and pass `--python-version` to ty automatically.
 
-## 3. Open: Module Resolution in Sandbox
+## 3. ✅ Resolved: Module Resolution in Sandbox
 
-**Status:** partially validated. See §1.3 for strategy.
+Validated in PoC Phase 3 ([Issue #2](https://github.com/shayanhoshyari/rules_ty/issues/2),
+`examples/poc/ty_aspect/defs.bzl`).
 
-**Host-side validation (Phase 1–2):** confirmed that ty's `--extra-search-path` resolves
-both first-party and third-party imports, and performance is well under 1 second per target.
-However, this ran ty from the host against `py_binary` runfiles — not inside a Bazel action
-sandbox, and not for `py_library` targets (which have no runfiles).
+The aspect uses `PyInfo.transitive_sources` as action inputs and `PyInfo.imports` (prefixed
+with `external/`) as `--extra-search-path` entries. See §1.3 for details.
 
-**Sandbox validation (Phase 3, in progress):** a minimal `.bzl` aspect that runs ty as a
-Bazel action using `PyInfo.transitive_sources` as action inputs and `PyInfo.imports` for
-`--extra-search-path`. This is the real test — it validates that the file layout in the
-action sandbox matches what ty expects.
+**Key results:**
+- 33 targets pass with `bazel build //... --aspects=...` (py_library + py_binary).
+- First-party and third-party imports resolve correctly inside the sandbox.
+- Type errors across transitive first-party deps are detected.
+- Second build with no changes: 0 actions (all cache hits).
+- Per-target time: < 1 second (0.79s critical path for 32 actions).
