@@ -107,7 +107,23 @@ ty check [PATH...]              # Check specific files
 
 Reference: https://docs.astral.sh/ty/reference/cli/
 
-### 3.2 Module resolution
+### 3.2 Internals: salsa and caching
+
+ty uses the [salsa](https://github.com/salsa-rs/salsa) framework for in-memory incremental
+computation. Queries like `infer_scope_types`, `infer_definition_types` are `#[salsa::tracked]`
+— salsa memoizes results and only re-executes queries whose inputs changed.
+
+**No persistent cache today.** Each `ty check` invocation starts fresh. The code has a TODO for
+persistence (`crates/ty_project/src/db.rs`, line 104) but it's not implemented. salsa has a
+`persistence` feature (serde derives) but it's not wired up in ty.
+
+**Bazel symlink support.** ty's file walker follows symlinks since
+[astral-sh/ty#922](https://github.com/astral-sh/ty/issues/922) (Aug 2025), which is required
+for Bazel's symlink forest execution sandbox.
+
+Source: `.worktrees/ty-ruff/` (sparse clone of `astral-sh/ruff`).
+
+### 3.3 Module resolution
 
 ty discovers installed packages via:
 1. Active virtual environment (`VIRTUAL_ENV`)
@@ -116,15 +132,22 @@ ty discovers installed packages via:
 4. `--extra-search-path` for additional module resolution paths
 5. `--python` pointing to a Python interpreter or venv
 
-In a Bazel sandbox, (1-3) don't exist. We rely on rules_python's `venvs_site_packages` mode to provide a proper venv layout (see section 3.3).
+In a Bazel sandbox, (1-3) don't exist. The aspect uses (4) `--extra-search-path` with paths
+derived from `PyInfo.imports`. See `design/architecture.md` §1.3.
 
 ### 3.3 rules_python venvs_site_packages
 
-rules_ty requires `--@rules_python//python/config_settings:venvs_site_packages=yes`.
+**Not required by rules_ty.** Documented here for reference since it was initially
+considered and investigated during the PoC.
 
-When enabled, rules_python creates a per-binary `.venv/lib/pythonX.Y/site-packages/` with symlinks to packages in runfiles. This gives ty a standard venv layout for third-party module discovery.
+When enabled, rules_python creates a per-binary `.venv/lib/pythonX.Y/site-packages/` with
+symlinks to packages in runfiles. However, the PoC ([Issue #2](https://github.com/shayanhoshyari/rules_ty/issues/2))
+found that these symlinks are broken outside the Bazel execution sandbox and `py_library`
+targets don't have runfiles at all. The aspect uses `PyInfo.imports` +
+`PyInfo.transitive_sources` instead, which work regardless of `venvs_site_packages`.
 
-**Scope limitation:** this feature only affects third-party packages from pip. First-party `py_library` sources are not placed in site-packages — they remain in the runfiles tree and must be discovered via `--extra-search-path` or `PyInfo.imports`.
+**Scope limitation:** this feature only affects third-party packages from pip. First-party
+`py_library` sources are not placed in site-packages.
 
 **Enabling:**
 - Flag: `--@rules_python//python/config_settings:venvs_site_packages=yes`

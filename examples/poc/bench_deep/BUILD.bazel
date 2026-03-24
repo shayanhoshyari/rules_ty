@@ -1,0 +1,8 @@
+load("@rules_python//python:py_library.bzl", "py_library")
+
+py_library(
+    name = "bench_deep",
+    srcs = ["__init__.py", "deep.py"],
+    deps = ["//chain/link_25"],
+    visibility = ["//visibility:public"],
+)

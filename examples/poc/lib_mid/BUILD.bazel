@@ -1,0 +1,8 @@
+load("@rules_python//python:py_library.bzl", "py_library")
+
+py_library(
+    name = "lib_mid",
+    srcs = ["__init__.py", "mid.py"],
+    deps = ["//lib_base"],
+    visibility = ["//visibility:public"],
+)
