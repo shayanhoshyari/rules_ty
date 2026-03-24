@@ -7,7 +7,7 @@ Similar to [rules_mypy](https://github.com/bazel-contrib/rules_mypy) but targeti
 - No `types` mapping — rely on [gazelle](https://rules-python.readthedocs.io/en/latest/gazelle/docs/directives.html#python-generate-pyi-deps) instead
 - No per-target cache propagation — ty is fast enough
 - No `python_version` parameter — inferred from the Python toolchain
-- Requires [`venvs_site_packages`](https://rules-python.readthedocs.io/en/stable/api/rules_python/python/config_settings/index.html) for third-party module resolution
+- Works with any `rules_python` configuration — no `venvs_site_packages` requirement
 
 ## Status
 

@@ -132,15 +132,22 @@ ty discovers installed packages via:
 4. `--extra-search-path` for additional module resolution paths
 5. `--python` pointing to a Python interpreter or venv
 
-In a Bazel sandbox, (1-3) don't exist. We rely on rules_python's `venvs_site_packages` mode to provide a proper venv layout (see section 3.3).
+In a Bazel sandbox, (1-3) don't exist. The aspect uses (4) `--extra-search-path` with paths
+derived from `PyInfo.imports`. See `design/architecture.md` §1.3.
 
 ### 3.3 rules_python venvs_site_packages
 
-rules_ty requires `--@rules_python//python/config_settings:venvs_site_packages=yes`.
+**Not required by rules_ty.** Documented here for reference since it was initially
+considered and investigated during the PoC.
 
-When enabled, rules_python creates a per-binary `.venv/lib/pythonX.Y/site-packages/` with symlinks to packages in runfiles. This gives ty a standard venv layout for third-party module discovery.
+When enabled, rules_python creates a per-binary `.venv/lib/pythonX.Y/site-packages/` with
+symlinks to packages in runfiles. However, the PoC ([Issue #2](https://github.com/shayanhoshyari/rules_ty/issues/2))
+found that these symlinks are broken outside the Bazel execution sandbox and `py_library`
+targets don't have runfiles at all. The aspect uses `PyInfo.imports` +
+`PyInfo.transitive_sources` instead, which work regardless of `venvs_site_packages`.
 
-**Scope limitation:** this feature only affects third-party packages from pip. First-party `py_library` sources are not placed in site-packages — they remain in the runfiles tree and must be discovered via `--extra-search-path` or `PyInfo.imports`.
+**Scope limitation:** this feature only affects third-party packages from pip. First-party
+`py_library` sources are not placed in site-packages.
 
 **Enabling:**
 - Flag: `--@rules_python//python/config_settings:venvs_site_packages=yes`

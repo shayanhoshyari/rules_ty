@@ -10,39 +10,42 @@ Type checking is always enabled. There is no opt-in mode (no `opt_in_tags`). Use
 
 Rationale: opt-in mode in rules_mypy was useful for gradual adoption in existing codebases, but adds complexity. For rules_ty, the expectation is that users enable it project-wide. Skipping individual targets via tags covers the escape hatch.
 
-### 1.2 Requires venvs_site_packages
+### 1.2 Does not require venvs_site_packages
 
-rules_ty only supports projects with `--@rules_python//python/config_settings:venvs_site_packages=yes` enabled. This is the modern rules_python mode where each `py_binary` gets a proper `.venv/site-packages/` layout with symlinks.
+rules_ty works with any `rules_python` configuration. It does **not** require
+`venvs_site_packages=yes`.
 
-**Important:** `venvs_site_packages` only affects third-party packages pulled in via pip. First-party `py_library` sources remain in the runfiles tree and are not placed in site-packages.
+The aspect resolves modules via `PyInfo.imports` and `PyInfo.transitive_sources`, which are
+populated by `rules_python` regardless of the `venvs_site_packages` setting. The venv
+layout is a runtime execution concern; it does not affect the `PyInfo` providers that the
+aspect reads at analysis/action time.
 
-Rationale for requiring the feature despite only covering third-party:
-- **Simplifies the harder problem.** Third-party resolution was the most complex and fragile part of rules_mypy (constructing MYPYPATH for all transitive pip deps). venvs_site_packages eliminates this entirely.
-- **Future-looking.** venvs_site_packages is the direction rules_python is heading. Building on the old `sys.path`-based layout would mean supporting a mode that is likely to be superseded.
-- **Better third-party compatibility.** Packages like torch, nvidia CUDA libs, and others that assume site-packages layout work correctly with this mode.
+**History:** we initially planned to require `venvs_site_packages` and use the venv's
+`site-packages/` layout for third-party module discovery. The PoC ([Issue #2](https://github.com/shayanhoshyari/rules_ty/issues/2))
+disproved this — the venv symlinks are broken outside the Bazel execution sandbox, and
+`py_library` targets don't have runfiles at all. The working approach uses `PyInfo`
+providers, which makes `venvs_site_packages` irrelevant to type checking.
 
-### 1.3 Module resolution strategy (validated)
+### 1.3 Module resolution strategy
 
-**PoC result ([Issue #2](https://github.com/shayanhoshyari/rules_ty/issues/2)):** the venv
-`site-packages/` layout created by `venvs_site_packages` uses symlinks that are only valid
-inside the Bazel execution sandbox. Outside the sandbox (in `bazel-bin/`), the symlinks are
-broken. This means we **cannot** use `--python` pointing at the venv for third-party
-discovery.
+The aspect uses **`PyInfo` providers** and **`--extra-search-path`** for both first-party
+and third-party deps:
 
-Instead, we use **`--extra-search-path` for both first-party and third-party deps**, using
-the **runfiles tree** (which has valid symlinks):
-
-- **First-party `py_library` deps:** `--extra-search-path <runfiles>/_main` (or the repo
-  name). Sources are symlinked from the workspace into the runfiles tree.
-- **Third-party (pip) deps:** `--extra-search-path <runfiles>/<pip_repo>/site-packages` for
-  each pip package. The pip packages live under
-  `rules_python++pip+pip_<version>_<pkg>/site-packages/` in the runfiles tree.
+- **Action inputs:** `PyInfo.transitive_sources` + `PyInfo.transitive_pyi_files` from deps
+  are passed as action inputs. This makes all source and stub files available in the
+  sandbox for ty to resolve imports.
+- **Search paths:** `PyInfo.imports` from deps provides path prefixes relative to the
+  exec root (e.g., `../rules_python++pip+pip_312_numpy/site-packages` for pip packages).
+  These are passed as `--extra-search-path` entries to ty.
+- **Scope:** the aspect only checks the target's own `srcs`. Transitive deps are in the
+  sandbox for import resolution, not for type checking.
 
 This is the same approach `rules_lint` uses — it collects `PyInfo.imports` from deps and
-constructs `--extra-search-path` entries.
+constructs `--extra-search-path` entries, with transitive sources as action inputs.
 
-**Validated in `examples/poc/validate.sh`:** all ty checks pass for leaf libraries,
-transitive first-party chains, and third-party imports (numpy, requests).
+**Status:** host-side validation confirmed `--extra-search-path` works for ty
+(`examples/poc/validate.sh`). Sandbox validation via a minimal Bazel aspect is in progress
+(Phase 3 of the PoC).
 
 ## 2. Key Design Decisions
 
@@ -108,16 +111,16 @@ rules_mypy requires a `types` dict mapping deps to their stub packages. We drop 
 
 rules_mypy requires `python_version` as a parameter on `mypy_cli`. We infer it from the Python toolchain (`ctx.toolchains`) and pass `--python-version` to ty automatically.
 
-## 3. ✅ Resolved: Module Resolution in Sandbox
+## 3. Open: Module Resolution in Sandbox
 
-Validated in PoC ([Issue #2](https://github.com/shayanhoshyari/rules_ty/issues/2)).
+**Status:** partially validated. See §1.3 for strategy.
 
-**Finding:** the venv created by `venvs_site_packages` has broken symlinks outside the sandbox.
-The aspect must use `--extra-search-path` on the **runfiles tree** for both first-party and
-third-party resolution. See §1.3 for the validated strategy.
+**Host-side validation (Phase 1–2):** confirmed that ty's `--extra-search-path` resolves
+both first-party and third-party imports, and performance is well under 1 second per target.
+However, this ran ty from the host against `py_binary` runfiles — not inside a Bazel action
+sandbox, and not for `py_library` targets (which have no runfiles).
 
-**Key PoC results:**
-- First-party `py_library` chain: `--extra-search-path <runfiles>/_main` — works.
-- Third-party pip deps: `--extra-search-path <runfiles>/<pip_repo>/site-packages` — works.
-- Type errors across transitive first-party deps are correctly detected.
-- Per-target ty check time: 50–100ms (well under the 1-second criterion).
+**Sandbox validation (Phase 3, in progress):** a minimal `.bzl` aspect that runs ty as a
+Bazel action using `PyInfo.transitive_sources` as action inputs and `PyInfo.imports` for
+`--extra-search-path`. This is the real test — it validates that the file layout in the
+action sandbox matches what ty expects.

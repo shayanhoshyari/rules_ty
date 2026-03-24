@@ -127,9 +127,10 @@ Captured in `design/architecture.md` §2.1.
 
 ## PoC plan
 
-### ✅ Phase 1: Module resolution validation
+### ✅ Phase 1: Host-side validation of ty's --extra-search-path
 
-**Result: PASS.** Module resolution works using `--extra-search-path` on the runfiles tree.
+**Result: PASS.** Confirmed that ty's `--extra-search-path` mechanism resolves both
+first-party and third-party imports when pointed at the correct directories.
 
 **Workspace: `examples/poc/`** — Bazel 9.0.1, rules_python 1.8.4, Python 3.12, ty 0.0.24.
 
@@ -138,25 +139,23 @@ symlinks that are only valid inside the Bazel execution sandbox. In `bazel-bin/`
 symlinks are broken. `--python` pointing to the venv fails because `pyvenv.cfg` is empty
 (no `home` key). **The venv layout cannot be used directly for ty's module discovery.**
 
-**Working strategy:** use `--extra-search-path` on the **runfiles tree** for both first-party
-and third-party deps:
-- First-party: `--extra-search-path <runfiles>/_main`
-- Third-party: `--extra-search-path <runfiles>/rules_python++pip+pip_<ver>_<pkg>/site-packages`
+**Design consequence:** since the aspect uses `PyInfo.imports` + `PyInfo.transitive_sources`
+(not the venv layout), `venvs_site_packages` is irrelevant to type checking. Dropped as a
+requirement — see `design/architecture.md` §1.2.
 
-This is the same approach `rules_lint` uses (via `PyInfo.imports`).
+**Limitation:** this phase ran ty from the host machine against Bazel's build outputs
+(the `py_binary` runfiles tree). Runfiles are a runtime concept for executable targets —
+they don't exist for `py_library` and aren't available as action inputs. The real aspect
+must use `PyInfo` providers, not runfiles. See Phase 3.
 
-**Validated scenarios:**
+**Validated scenarios (host-side):**
 - `lib_base/base.py` — leaf library, no deps: **pass** (75ms)
 - `lib_mid/mid.py` — imports lib_base: **pass** (75ms)
 - `lib_top/top.py` — transitive chain (lib_mid → lib_base): **pass** (72ms)
 - `app/main.py` — first-party + third-party (numpy, requests): **pass** (101ms)
 - Type errors across transitive first-party deps: **correctly detected**
 
-All well under the 1-second per-target criterion.
-
-Design updated: `design/architecture.md` §1.3 and §3.
-
-### ✅ Phase 2: Performance measurement
+### ✅ Phase 2: Host-side performance measurement
 
 **Result: PASS.** All per-target checks well under 1 second.
 
@@ -175,15 +174,35 @@ Design updated: `design/architecture.md` §1.3 and §3.
 | Wide third-party (7 packages) | 0.166s | click, flask, httpx, numpy, pandas, pydantic, requests |
 | App (first-party + third-party) | 0.127s | First-party chain + numpy + requests |
 
-All pass the < 1 second criterion. The heaviest case (pandas + numpy) is 323ms.
+**Limitation:** same as Phase 1 — host-side only, used runfiles, not action sandbox.
 
-**Not tested:** torch (very large download, deferred). Given that pandas + numpy at 323ms
-is well under 1s, torch is expected to be within budget too.
+### Phase 3: Bazel action validation (minimal aspect)
 
-**Not tested:** full `bazel build ...` scaling (requires building ty as a Bazel aspect,
-which is not in scope for the module resolution PoC). The per-target numbers give high
-confidence that individual action times will be acceptable.
+The real validation. Write a minimal `.bzl` aspect that runs ty inside a Bazel action,
+using the mechanisms available to aspects (not runfiles):
 
-Design updated: `design/architecture.md` §2.1 PoC success criteria.
+**How it works:**
+- Aspect visits `py_library`, `py_binary`, `py_test` targets.
+- Collects `PyInfo.transitive_sources` + `PyInfo.transitive_pyi_files` from deps →
+  passed as **action inputs** (files available in the sandbox).
+- Collects `PyInfo.imports` from deps → used to construct `--extra-search-path` entries.
+  These are path prefixes relative to the exec root (e.g.,
+  `../rules_python++pip+pip_312_numpy/site-packages` for pip packages).
+- Runs `ty check` on the target's own `srcs` only — transitive deps are in the sandbox
+  for import resolution, not for checking.
+- ty binary fetched via `rules_multitool` with `cfg = "exec"`.
+
+**What this validates:**
+1. The file layout in the action sandbox is correct for ty's module resolution.
+2. `PyInfo.imports` path prefixes produce valid `--extra-search-path` entries.
+3. ty works on `py_library` targets (which have no runfiles).
+4. `bazel build //... --aspects=...` runs ty across the full graph.
+5. Bazel action caching works — second `bazel build` with no changes is all cache hits.
+
+**Pass/fail:**
+- ty exits 0 on all targets via `bazel build --aspects` → module resolution works
+  inside the sandbox.
+- Type errors are correctly detected and fail the build.
+- Second build with no changes: 0 actions executed (all cache hits).
 
 ---
