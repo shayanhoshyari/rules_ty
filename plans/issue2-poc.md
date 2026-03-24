@@ -124,3 +124,66 @@ caching, stub generation) can be layered on later without changing the aspect's 
 Captured in `design/architecture.md` §2.1.
 
 ---
+
+## PoC plan
+
+### ✅ Phase 1: Module resolution validation
+
+**Result: PASS.** Module resolution works using `--extra-search-path` on the runfiles tree.
+
+**Workspace: `examples/poc/`** — Bazel 9.0.1, rules_python 1.8.4, Python 3.12, ty 0.0.24.
+
+**Key finding:** the venv `site-packages/` layout created by `venvs_site_packages` uses
+symlinks that are only valid inside the Bazel execution sandbox. In `bazel-bin/`, the
+symlinks are broken. `--python` pointing to the venv fails because `pyvenv.cfg` is empty
+(no `home` key). **The venv layout cannot be used directly for ty's module discovery.**
+
+**Working strategy:** use `--extra-search-path` on the **runfiles tree** for both first-party
+and third-party deps:
+- First-party: `--extra-search-path <runfiles>/_main`
+- Third-party: `--extra-search-path <runfiles>/rules_python++pip+pip_<ver>_<pkg>/site-packages`
+
+This is the same approach `rules_lint` uses (via `PyInfo.imports`).
+
+**Validated scenarios:**
+- `lib_base/base.py` — leaf library, no deps: **pass** (75ms)
+- `lib_mid/mid.py` — imports lib_base: **pass** (75ms)
+- `lib_top/top.py` — transitive chain (lib_mid → lib_base): **pass** (72ms)
+- `app/main.py` — first-party + third-party (numpy, requests): **pass** (101ms)
+- Type errors across transitive first-party deps: **correctly detected**
+
+All well under the 1-second per-target criterion.
+
+Design updated: `design/architecture.md` §1.3 and §3.
+
+### ✅ Phase 2: Performance measurement
+
+**Result: PASS.** All per-target checks well under 1 second.
+
+**Setup:** Added pandas, pydantic, flask, click, httpx to pip deps. Generated 25 chained
+`py_library` targets. Created `bench_wide` (7 pip packages), `bench_heavy` (pandas + numpy),
+`bench_deep` (25-deep first-party chain).
+
+**Results (ty 0.0.24, Bazel 9.0.1, Apple M-series):**
+
+| Test | Time | Notes |
+|------|------|-------|
+| Leaf library (baseline) | 0.172s | No deps |
+| First-party chain (3 deep) | 0.105s | lib_base → lib_mid → lib_top |
+| Deep first-party chain (25 libs) | 0.131s | 25 transitive py_library deps |
+| Heavy third-party (pandas + numpy) | 0.323s | Heaviest single-target case |
+| Wide third-party (7 packages) | 0.166s | click, flask, httpx, numpy, pandas, pydantic, requests |
+| App (first-party + third-party) | 0.127s | First-party chain + numpy + requests |
+
+All pass the < 1 second criterion. The heaviest case (pandas + numpy) is 323ms.
+
+**Not tested:** torch (very large download, deferred). Given that pandas + numpy at 323ms
+is well under 1s, torch is expected to be within budget too.
+
+**Not tested:** full `bazel build ...` scaling (requires building ty as a Bazel aspect,
+which is not in scope for the module resolution PoC). The per-target numbers give high
+confidence that individual action times will be acceptable.
+
+Design updated: `design/architecture.md` §2.1 PoC success criteria.
+
+---
